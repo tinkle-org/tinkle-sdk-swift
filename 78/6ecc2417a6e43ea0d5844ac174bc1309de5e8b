@@ -1,0 +1,68 @@
+Package.swift
+  s_becb21c7f53227::t_540c95420d93be 58-62
+  s_becb21c7f53227::t_633883ddda34a8 1-45,47,51-57,63-72,76-81
+  s_becb21c7f53227::t_1189c7927761b5 46,48-50
+  s_becb21c7f53227::t_ae1271d936f574 73-75
+Tests/TinkleSDKTests/TinkleSDKTests.swift
+  s_01684495b6aaaf::t_1ba5d3cd304919 67
+  s_01684495b6aaaf::t_bed37b706f6f4e 91,94
+  s_becb21c7f53227::t_bfba1b5e170564 1-66,68-70,132-137,142-143,149-162
+  s_01684495b6aaaf::t_70e0968004657b 114,117
+  s_becb21c7f53227::t_32e2164172e64d 71-90,92-93,95-107,110-113,115-116,118-131,138-141,144-146,148
+  s_01684495b6aaaf::t_d245fa84c658e5 108-109
+  s_01684495b6aaaf::t_5e35b30d91cd67 147
+TEST-EVIDENCE.md
+  s_becb21c7f53227::t_e7af551e27ee26 28-33
+  s_becb21c7f53227::t_87d6c962863c9f 83-90
+  s_becb21c7f53227::t_1189c7927761b5 1-27,34-82,91-102
+.github/workflows/ci.yml
+  s_4492f88c3455f1::t_45d0f2dccdd74a 1-99
+README.md
+  s_becb21c7f53227::t_1189c7927761b5 81-85
+  s_becb21c7f53227::t_633883ddda34a8 1-80,86-114
+Sources/TinkleSDK/Bootstrap.swift
+  s_becb21c7f53227::t_633883ddda34a8 1-5
+LICENSE
+  s_becb21c7f53227::t_633883ddda34a8 1-15
+.github/workflows/release.yml
+  s_4492f88c3455f1::t_45d0f2dccdd74a 1-27,30-31,33-35,40-58
+  s_4492f88c3455f1::t_bdb8c57f3c1ba0 28-29,32,36-39
+Tests/TinkleSDKTests/LoopbackGateway.swift
+  s_becb21c7f53227::t_32e2164172e64d 1-244
+.gitignore
+  s_becb21c7f53227::t_633883ddda34a8 1-7
+Sources/TinkleSDK/TinkleSDK.swift
+  s_01684495b6aaaf::t_1f07a01277f7df 1-2276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "786ecc2417a6e43ea0d5844ac174bc1309de5e8b",
+  "prompts": {},
+  "sessions": {
+    "s_01684495b6aaaf": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e99fadca2ffe8J7suy20FLbfIZ",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "oscarlaw <oscarlaw2010@gmail.com>"
+    },
+    "s_4492f88c3455f1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e992abc36ffeq6T2xniljhoAfx",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "oscarlaw <oscarlaw2010@gmail.com>"
+    },
+    "s_becb21c7f53227": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e992abc73ffeADkolSdSwMbRpJ",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "oscarlaw <oscarlaw2010@gmail.com>"
+    }
+  }
+}
