@@ -1,0 +1,99 @@
+name: Swift SDK CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Bootstrap only: libtinkle branch/tag/SHA containing native automation; empty uses sdk-artifact.json'
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: swift-sdk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.source.outputs.ready }}
+      core_sha: ${{ steps.source.outputs.core_sha }}
+      bootstrap: ${{ steps.source.outputs.bootstrap }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: source
+        name: Select published provenance or explicit bootstrap source
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, re, subprocess, urllib.parse
+          metadata = pathlib.Path('sdk-artifact.json')
+          ref = os.environ.get('SOURCE_REF', '')
+          if metadata.exists():
+              assert not ref, 'Published SDK CI must use its manifest SHA'
+              ref = json.loads(metadata.read_text())['source_revision']
+              assert re.fullmatch('[0-9a-f]{40}', ref), 'Expected exact source revision'
+              bootstrap = False
+          else:
+              bootstrap = bool(ref)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('ready=' + str(bool(ref)).lower() + '\n')
+              output.write('bootstrap=' + str(bootstrap).lower() + '\n')
+              if ref:
+                  data = json.loads(subprocess.check_output(['gh', 'api', 'repos/tinklehq/libtinkle/commits/' + urllib.parse.quote(ref, safe='')]))
+                  assert re.fullmatch('[0-9a-f]{40}', data['sha'])
+                  output.write('core_sha=' + data['sha'] + '\n')
+              else:
+                  with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                      summary.write('Native consumer validation is **not run**: awaiting the first core release. Run workflow_dispatch with an explicit source_ref for bootstrap proof. No release metadata or SDK tag is fabricated.\n')
+          PY
+  consumer:
+    needs: source
+    if: needs.source.outputs.ready == 'true'
+    runs-on: macos-26
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.1
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      IPHONEOS_DEPLOYMENT_TARGET: '15.0'
+      BOOTSTRAP: ${{ needs.source.outputs.bootstrap }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: sdk
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: tinklehq/libtinkle
+          ref: ${{ needs.source.outputs.core_sha }}
+          path: core
+          persist-credentials: false
+      - name: Bootstrap native artifact (test only)
+        if: env.BOOTSTRAP == 'true'
+        working-directory: core
+        env:
+          SDK_OUTPUT_DIR: ${{ github.workspace }}/artifacts
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --target aarch64-apple-ios --target aarch64-apple-ios-sim --target x86_64-apple-ios
+          python3 scripts/sdk-ci.py toolchain
+          bash scripts/build-ios.sh
+      - name: Verify downloaded checksum and binding parity, then stage local XCFramework
+        run: |
+          if [[ "$BOOTSTRAP" == true ]]; then
+            python3 core/scripts/sdk-ci.py stage --sdk swift --destination sdk --artifacts artifacts --bootstrap
+          else
+            python3 core/scripts/sdk-ci.py stage --sdk swift --destination sdk --artifacts artifacts --download
+          fi
+      - name: Simulator consumer test (iOS 15 deployment target; available current runtime)
+        run: python3 core/scripts/sdk-ci.py swift-test --destination sdk
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: swift-consumer-results
+          path: sdk/.build/ci-results.xcresult
+          retention-days: 14

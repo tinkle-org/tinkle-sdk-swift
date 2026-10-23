@@ -1,0 +1,58 @@
+name: Swift SDK release tag
+on:
+  pull_request:
+    types: [closed]
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: swift-sdk-release
+  cancel-in-progress: false
+jobs:
+  authorize:
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'sdk-release/'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+          path: sdk
+          persist-credentials: false
+      - name: Read merged provenance
+        id: provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          data = json.load(open('sdk/sdk-artifact.json'))
+          sha = data['source_revision']
+          assert data['source_repository'] == 'tinklehq/libtinkle' and re.fullmatch('[0-9a-f]{40}', sha)
+          branch = json.loads(subprocess.check_output(['gh', 'api', 'repos/tinklehq/libtinkle/branches/main']))
+          assert branch['protected'], 'Core main must be protected'
+          compare = json.loads(subprocess.check_output(['gh', 'api', 'repos/tinklehq/libtinkle/compare/' + sha + '...main']))
+          assert compare['merge_base_commit']['sha'] == sha, 'Core automation must be on main'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('sha=' + sha + '\n')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: tinklehq/libtinkle
+          ref: ${{ steps.provenance.outputs.sha }}
+          path: core
+          persist-credentials: false
+      - name: Verify merged release PR, published manifest, and binding before authorizing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            python3 core/scripts/sdk-ci.py sdk-tag --sdk swift --destination sdk --create
+          else
+            python3 core/scripts/sdk-ci.py sdk-tag --sdk swift --destination sdk
+          fi
