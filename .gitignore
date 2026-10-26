@@ -5,3 +5,5 @@ Artifacts/
 build/
 DerivedData/
 *.xcresult/
+__pycache__/
+*.pyc

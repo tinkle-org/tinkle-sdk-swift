@@ -3,8 +3,8 @@ import Darwin
 import Foundation
 
 /// One-client test fixture, mirroring libtinkle's client_integration gateway.
-/// Implements only WebSocket upgrade, Syntra hello/ready, and SubscribeBatched.
-/// Field IDs match syntra.v1.Frame and tinkle.v1.SubscribeResponse. This is not
+/// Implements only WebSocket upgrade, Syntra hello/ready, and GetTargetChanges.
+/// Field IDs match syntra.v1.Frame and tinkle.v1.GetTargetChangesResponse. This is not
 /// a transport implementation for application use.
 final class LoopbackGateway: @unchecked Sendable {
     private let lock = NSLock()
@@ -13,7 +13,20 @@ final class LoopbackGateway: @unchecked Sendable {
     private var connection: Int32 = -1
     private var stopped = false
     private var failure: Error?
+    private var requests: [TargetChangesRequest] = []
     let port: UInt16
+
+    struct TargetChangesRequest: Equatable {
+        let targetKind: String
+        let targetId: Int64
+        let afterAcceptSeq: Int64
+    }
+
+    var targetChangesRequests: [TargetChangesRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return requests
+    }
 
     init() throws {
         let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
@@ -105,19 +118,45 @@ final class LoopbackGateway: @unchecked Sendable {
         try write(fd, Array(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" +
             "Connection: Upgrade\r\nSec-WebSocket-Protocol: syntra.v1\r\n" +
             "Sec-WebSocket-Accept: \(accept)\r\n\r\n").utf8))
-        guard let hello = try readBinary(fd), try fields(hello)[10]?.bytes != nil else {
+        guard let helloBody = try readBinary(fd) else {
             throw FixtureError("missing Syntra hello")
+        }
+        let helloFrame = try fields(helloBody)
+        guard helloFrame[1]?.number == 1, (helloFrame[2]?.number ?? 0) == 0,
+              let hello = helloFrame[10]?.bytes else { throw FixtureError("invalid Syntra hello frame") }
+        let greeting = try fields(hello)
+        guard greeting[1]?.number == 1, greeting[2]?.number == 1,
+              let credential = greeting[3]?.bytes, !credential.isEmpty else {
+            throw FixtureError("invalid Syntra hello")
         }
         try send(fd, number(1, 1) + bytes(11, bytes(1, Array("swift-smoke".utf8))))
         while let body = try readBinary(fd) {
             let frame = try fields(body)
             guard let request = frame[12]?.bytes else { continue }
             let rpc = try fields(request)
-            guard rpc[1]?.bytes == Array("/tinkle.v1.Realtime/SubscribeBatched".utf8),
-                  let id = frame[2]?.number else { throw FixtureError("unexpected fixture RPC") }
+            guard frame[1]?.number == 1,
+                  rpc[1]?.bytes == Array("/tinkle.v1.MessagesService/GetTargetChanges".utf8),
+                  let id = frame[2]?.number, id > 0 else { throw FixtureError("unexpected fixture RPC") }
             let payload = try fields(rpc[2]?.bytes ?? [])
-            let cursor = payload[1]?.number ?? 0
-            let response = bytes(2, Array("user:42".utf8)) + number(3, cursor)
+            let target = try fields(payload[1]?.bytes ?? [])
+            guard (target[1] != nil) != (target[2] != nil),
+                  let targetId = target[1]?.number ?? target[2]?.number,
+                  targetId > 0, targetId <= UInt64(Int64.max),
+                  let limit = payload[3]?.number, (1...500).contains(limit) else {
+                throw FixtureError("invalid target changes request")
+            }
+            let afterAcceptSeq = payload[2]?.number ?? 0
+            guard afterAcceptSeq <= UInt64(Int64.max) else { throw FixtureError("negative acceptance position") }
+            let decoded = TargetChangesRequest(
+                targetKind: target[1] != nil ? "user" : "room",
+                targetId: Int64(targetId), afterAcceptSeq: Int64(afterAcceptSeq)
+            )
+            lock.lock()
+            requests.append(decoded)
+            lock.unlock()
+            // Empty page: explicitly caught up, with the request's cursor.
+            // Omitting optional more_available would mean unknown, not false.
+            let response = number(2, 0) + number(3, afterAcceptSeq)
             try send(fd, number(1, 1) + number(2, id) + bytes(13, bytes(1, response)))
         }
     }
